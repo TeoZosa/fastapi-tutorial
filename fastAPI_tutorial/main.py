@@ -1787,7 +1787,9 @@ async def read_items(
         # Declare the dependency, in the "dependant"
         # The same way you use `Body`, `Query`, etc. with your path operation function parameters, 
         # use `Depends` with a new parameter
-        commons: dict = Depends(common_parameters)):
+        commons: dict = Depends(common_parameters)
+        # Note: `Depends` accepts any callable, not just fns
+        ):
     return commons
 
 
@@ -1820,3 +1822,41 @@ async def read_users(commons: dict = Depends(common_parameters)):
         # parameters, validations, etc. to your path operations.
     # FastAPI will take care of adding it all to the OpenAPI schema, 
     # so that it is shown in the interactive documentation systems.
+
+"""Classes as Dependencies"""
+from typing import Optional
+
+from fastapi import Depends, FastAPI
+
+app = FastAPI()
+
+
+fake_items_db = [{"item_name": "Foo"}, {"item_name": "Bar"}, {"item_name": "Baz"}]
+
+
+class CommonQueryParams:
+    def __init__(self, q: Optional[str] = None, skip: int = 0, limit: int = 100):
+        self.q = q
+        self.skip = skip
+        self.limit = limit
+
+
+@app.get("/items/")
+async def read_items(
+        # Infer the callable from the `CommonQueryParams` type annotation 
+        # (since `CommonQueryParams` is a class) 
+        commons: CommonQueryParams = Depends(),
+        # ==
+        # commons: CommonQueryParams = Depends(CommonQueryParams),
+        
+        # Note: 
+        # If shorthand seems more confusing than helpful, 
+        #   disregard it, you don't need it. It is just a shortcut. 
+        
+        ):
+    response = {}
+    if commons.q:
+        response.update({"q": commons.q})
+    items = fake_items_db[commons.skip : commons.skip + commons.limit]
+    response.update({"items": items})
+    return response
