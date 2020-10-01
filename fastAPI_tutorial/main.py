@@ -1967,3 +1967,169 @@ async def read_items():
     # possibly with multiple files,
     # you will learn how to declare a single dependencies parameter for a group
     # of path operations.
+
+"""Dependencies with yield"""
+## Technical Details
+# Any function that is valid to use with:
+# `@contextlib.contextmanager` or
+# `@contextlib.asynccontextmanager`
+# would be valid to use as a FastAPI dependency.
+# In fact, FastAPI uses those two decorators internally.
+
+class DBSession:
+    def close(self, *args):
+        pass
+
+async def get_db():
+    db = DBSession()
+    try:
+        # yielded value is what is injected into 
+        # path operations and other dependencies
+        yield db
+    # code following the yield statement 
+    # is executed after the response has been delivered
+
+    # use finally to make sure the exit steps are executed, 
+    # no matter if there was an exception or not.
+    finally:
+        db.close()
+
+## Sub-dependencies with yield
+    # You can have sub-dependencies and "trees" of sub-dependencies 
+    # of any size and shape, and any or all of them can use yield.
+    
+    # FastAPI will make sure that the "exit code" 
+    # in each dependency with yield is run in the correct order.
+from fastapi import Depends
+
+def generate_dep_a() -> DBSession:
+    return DBSession()
+
+def generate_dep_b() -> DBSession:
+    return DBSession()
+
+def generate_dep_c() -> DBSession:
+    return DBSession()
+
+async def dependency_a():
+    dep_a = generate_dep_a()
+    try:
+        yield dep_a
+    finally:
+        dep_a.close()
+
+# `dependency_b` can depend on `dependency_a`
+async def dependency_b(dep_a=Depends(dependency_a)):
+    dep_b = generate_dep_b()
+    try:
+        yield dep_b
+    finally:
+        # And, in turn, `dependency_b` 
+        # needs the value from dependency_a (here named dep_a) to be available for its exit code.
+        dep_b.close(dep_a)
+
+# `dependency_c` can depend on `dependency_b`,
+async def dependency_c(dep_b=Depends(dependency_b)):
+    dep_c = generate_dep_c()
+    try:
+        yield dep_c
+    finally:
+    # In this case `dependency_c`, to execute its exit code, 
+    # needs the value from dependency_b (here named dep_b) to still be available.
+        dep_c.close(dep_b)
+
+# The same way, 
+    # you could have dependencies with yield and return mixed.
+    # And you could have a single dependency that requires several other dependencies with yield, etc.
+# You can have any combinations of dependencies that you want.
+# FastAPI will make sure everything is run in the correct order.
+
+# Technical Details
+    # This works thanks to Python's Context Managers.
+    # FastAPI uses them internally to achieve this.
+
+## Dependencies with yield and HTTPException
+
+# if you raise an `HTTPException` after the yield, the default (or any custom)
+# exception handler that catches `HTTPExceptions` and returns an HTTP 400 response 
+# WON'T BE THERE TO CATCH THAT EXCEPTION ANYMORE.
+
+# This is what allows anything set in the dependency 
+# (e.g. a DB session) 
+# to, for example, be used by background tasks.
+
+# Background tasks are run AFTER THE RESPONSE HAS BEEN SENT. 
+    # So there's no way to raise an `HTTPException` 
+    # because there's NOT EVEN A WAY TO CHANGE THE RESPONSE THAT IS ALREADY SENT.
+
+# But if a background task creates a DB error, 
+# at least you can rollback or cleanly close the session 
+# in the dependency with yield, 
+# and maybe log the error or report it to a remote tracking system.
+
+# If you have some code that you know could raise an exception, 
+# do the most normal/"Pythonic" thing 
+# and add a try block in that section of the code.
+
+# If you have custom exceptions 
+# that you would like to handle before returning the response 
+# and possibly modifying the response, 
+    # maybe even raising an HTTPException, 
+# create a Custom Exception Handler.
+
+# Can still raise exceptions including HTTPException BEFORE THE YIELD BUT NOT AFTER.
+
+# see [diagram](https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/#dependencies-with-yield-and-httpexception)
+
+# Info
+    # Only one response will be sent to the client. It might be one of the error
+    # responses or it will be the response from the path operation.
+    # After one of those responses is sent, no other response can be sent.
+
+# Tip
+    # This diagram shows HTTPException, but you could also raise any other 
+    # exception for which you create a Custom Exception Handler. And that 
+    # exception would be handled by that custom exception handler instead of the
+    # dependency exit code.
+    
+    # But if you raise an exception that is not handled by the exception 
+    # handlers, it will be handled by the exit code of the dependency.
+    
+## Context Managers
+# When you create a dependency with yield, 
+# FastAPI will internally convert it to a context manager, 
+# and combine it with some other related tools.
+
+# Warning
+    # This is, more or less, an "advanced" idea.
+    # If you are just starting with FastAPI you might want to skip it for now.
+class MySuperContextManager:
+    def __init__(self):
+        self.db = DBSession()
+    
+    # ctx mgr req function #1
+    def __enter__(self):
+        return self.db
+    
+    # ctx mgr req function #2
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.db.close()
+
+
+async def get_db():
+    # You can use Context Managers inside of FastAPI dependencies 
+    # with `yield` by using `with` or `async with` statements 
+    # inside of the dependency function:
+    with MySuperContextManager() as db:
+        yield db
+
+# Tip
+    # Another way to create a context manager is with:
+    # `@contextlib.contextmanager` or
+    # `@contextlib.asynccontextmanager`
+    # using them to decorate a function with a single yield.
+    # That's what FastAPI uses internally for dependencies with yield.
+    
+    # But you don't have to use the decorators for FastAPI dependencies 
+    # (AND YOU SHOULDN'T).
+    # FastAPI will do it for you internally.
