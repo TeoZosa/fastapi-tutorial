@@ -1745,3 +1745,78 @@ async def update_item(item_id: str, item: Item):
 # To distinguish from the models with all optional values for updates 
 # and models with required values for creation, 
 # you can use the ideas described in "Extra Models".
+
+"""Dependencies - First Steps"""
+## What is "Dependency Injection"
+    # "Dependency Injection" means, in programming, 
+    #   that there is a way for your code 
+    #   (in this case, your path operation functions) 
+    #   to declare things that it requires to work and use: "dependencies".
+    
+    # And then, that system (in this case FastAPI) 
+    #   will take care of doing whatever is needed to provide your code 
+    #   with those needed dependencies ("inject" the dependencies).
+    
+    # This is very useful when you need to:
+        # Have shared logic (the same code logic again and again).
+        # Share database connections.
+        # Enforce security, authentication, role requirements, etc.
+        # And many other things...
+    # All these, while minimizing code repetition.
+
+# Other common terms for this same idea of "dependency injection" are:
+    # resources
+    # providers
+    # services
+    # injectables
+    # components
+    
+from typing import Optional
+
+from fastapi import Depends, FastAPI
+
+app = FastAPI()
+
+# Create a dependency, or "dependable"
+async def common_parameters(q: Optional[str] = None, skip: int = 0, limit: int = 100):
+    return {"q": q, "skip": skip, "limit": limit}
+
+
+@app.get("/items/")
+async def read_items(
+        # Declare the dependency, in the "dependant"
+        # The same way you use `Body`, `Query`, etc. with your path operation function parameters, 
+        # use `Depends` with a new parameter
+        commons: dict = Depends(common_parameters)):
+    return commons
+
+
+@app.get("/users/")
+async def read_users(commons: dict = Depends(common_parameters)):
+    return commons
+
+## FastAPI compatibility
+    # The simplicity of the dependency injection system 
+    #   makes FastAPI compatible with:
+        # all the relational databases
+        # NoSQL databases
+        # external packages
+        # external APIs
+        # authentication and authorization systems
+        # API usage monitoring systems
+        # response data injection systems
+        # etc.
+
+## Simple and Powerful
+    # You can define dependencies 
+    # that in turn can define dependencies themselves.
+    # In the end, a hierarchical tree of dependencies is built, 
+    # and the Dependency Injection system takes care of 
+    # solving all these dependencies for you (and their sub-dependencies) 
+    # and providing (injecting) the results at each step.
+
+## Integrated with OpenAPI
+    # All these dependencies, while declaring their requirements, also add 
+        # parameters, validations, etc. to your path operations.
+    # FastAPI will take care of adding it all to the OpenAPI schema, 
+    # so that it is shown in the interactive documentation systems.
