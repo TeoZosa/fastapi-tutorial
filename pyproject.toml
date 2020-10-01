@@ -23,6 +23,7 @@ async-generator = "^1.10"
 
 
 [tool.poetry.dev-dependencies]
+pylint = "^2.6.0"
 
 
 [build-system]
