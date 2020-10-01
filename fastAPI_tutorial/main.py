@@ -1860,3 +1860,64 @@ async def read_items(
     items = fake_items_db[commons.skip : commons.skip + commons.limit]
     response.update({"items": items})
     return response
+
+"""Sub-dependencies"""
+from typing import Optional
+
+from fastapi import Cookie, Depends, FastAPI
+
+app = FastAPI()
+
+# First dependency 
+    # "dependable"
+def query_extractor(q: Optional[str] = None):
+    return q
+
+# Second dependency, 
+    # "dependable" AND "dependant"
+def query_or_cookie_extractor(
+        q: str = Depends(query_extractor), last_query: Optional[str] = Cookie(None)
+        ):
+    if not q:
+        return last_query
+    return q
+
+
+@app.get("/items/")
+async def read_query(
+        # Use the dependency
+        query_or_default: str = Depends(query_or_cookie_extractor)
+        # Notice that we are 
+        # only declaring one dependency in the path operation function, 
+        #   the `query_or_cookie_extractor`.
+        # But FastAPI will know that it has to solve `query_extractor` first, 
+        #   to pass the results of that to `query_or_cookie_extractor` while calling it.
+        ):
+    return {"q_or_cookie": query_or_default}
+
+## Using the same dependency multiple times
+
+# If one of your dependencies is declared multiple times for the same path operation, 
+# for example, multiple dependencies have a common sub-dependency, 
+# FastAPI will know to call that sub-dependency only once per request.
+
+# And it will save the returned value in a "cache" 
+# and pass it to all the "dependants" that need it in that specific request,
+# instead of calling the dependency multiple times for the same request.
+
+def get_value():
+    return "VALUE!"
+
+async def needy_dependency(
+        fresh_value: str = Depends(get_value,
+                                   
+                                   # In an advanced scenario where you 
+                                   # know you need the dependency to be called
+                                   # at every step (possibly multiple times) in the same request 
+                                   # instead of using the "cached" value 
+                                   use_cache=False)):
+    return {"fresh_value": fresh_value}
+# Tip
+    # All this might not seem as useful with these simple examples.
+    # But you will see how useful it is in the chapters about SECURITY.
+    # And you will also see the amounts of code it will save you.
