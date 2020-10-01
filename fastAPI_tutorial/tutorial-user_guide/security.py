@@ -270,3 +270,210 @@ async def read_users_me(
     # dependencies (different "dependables") that all return a User model.
     # We are not restricted to having only one dependency that can return that 
     # type of data.
+    
+"""Simple OAuth2 with Password and Bearer"""
+from typing import Optional
+
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+# `OAuth2PasswordRequestForm` is a class dependency that declares a form body 
+# with:
+    # The `username`.
+    # The `password`.
+    
+    # An (optional) `scope` field 
+        # as a big string, composed of strings separated by spaces.
+        # Tip
+            # The instance of the dependency class `OAuth2PasswordRequestForm` 
+                # won't have an attribute scope with the long string separated by spaces,
+                # instead, it will have a `scopes` attribute 
+                    # with the actual list of strings for each scope sent.
+            # We are not using scopes in this example, 
+            # but the functionality is there if you need it.
+            
+    # An (optional) `grant_type`.
+    # An (optional) `client_id` (we don't need it for our example).
+    # An (optional) `client_secret` (we don't need it for our example).
+# Tip
+    # The OAuth2 spec actually 
+        # requires a field `grant_type` 
+        # with a fixed value of `password`, 
+        # but OAuth2PasswordRequestForm doesn't enforce it.
+    # If you need to enforce it, 
+        # use `OAuth2PasswordRequestFormStrict` 
+        # instead of `OAuth2PasswordRequestForm`.
+# Info
+    # The `OAuth2PasswordRequestForm` is 
+        # NOT A SPECIAL CLASS FOR FASTAPI as is `OAuth2PasswordBearer`.
+    # `OAuth2PasswordBearer` 
+        # makes FastAPI know that it is a security scheme. 
+        # So it is added that way to OpenAPI.
+    # But `OAuth2PasswordRequestForm` is 
+        # JUST A CLASS DEPENDENCY THAT YOU COULD HAVE WRITTEN YOURSELF, 
+        # OR YOU COULD HAVE DECLARED `Form` PARAMETERS DIRECTLY.
+        # But as it's a common use case, 
+            # it is provided by FastAPI directly, just to make it easier.
+            
+from pydantic import BaseModel
+
+fake_users_db = {
+        "johndoe": {
+                "username": "johndoe",
+                "full_name": "John Doe",
+                "email": "johndoe@example.com",
+                "hashed_password": "fakehashedsecret",
+                "disabled": False,
+                },
+        "alice": {
+                "username": "alice",
+                "full_name": "Alice Wonderson",
+                "email": "alice@example.com",
+                "hashed_password": "fakehashedsecret2",
+                "disabled": True,
+                },
+        }
+
+app = FastAPI()
+
+
+def fake_hash_password(password: str):
+    return "fakehashed" + password
+
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+
+class User(BaseModel):
+    username: str
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    disabled: Optional[bool] = None
+
+
+class UserInDB(User):
+    hashed_password: str
+
+
+def get_user(db, username: str):
+    if username in db:
+        user_dict = db[username]
+        return UserInDB(**user_dict)
+
+
+def fake_decode_token(token):
+    # This doesn't provide any security at all
+    # Check the next version
+    user = get_user(fake_users_db, token)
+    return user
+
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    # Now, get the user data from the (fake) database, 
+    # using the username from the form field.
+    user = fake_decode_token(token)
+    if not user:
+        # If there is no such user, we return an error saying 
+        # "incorrect username or password".
+        # For the error, we use the exception `HTTPException`:
+        raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+                # Info
+                # The additional header 
+                    # `WWW-Authenticate` with value `Bearer` 
+                # we are returning here is also part of the spec.
+                
+                # Any HTTP (error) *status code 401 "UNAUTHORIZED" is 
+                # supposed to also return a `WWW-Authenticate` header.*
+                
+                # In the case of bearer tokens (our case), 
+                # the value of that header should be `Bearer`.
+                    # You can actually skip that extra header and it would still work.
+                    # But it's provided here to be compliant with the specifications.
+                    # Also, THERE MIGHT BE TOOLS THAT EXPECT AND USE IT 
+                    #   (now or in the future) and that 
+                    #   might be useful for you or your users, now or in the future. 
+                      # That's the benefit of standards...
+                )
+    return user
+
+
+async def get_current_active_user(current_user: User = Depends(get_current_user)):
+    if current_user.disabled: # get the current_user ONLY if this user is active.
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
+
+@app.post("/token")
+async def login(
+        form_data: OAuth2PasswordRequestForm = Depends()
+        # OAuth2 specifies that when using the 
+        # "password flow" (that we are using) 
+        # the CLIENT/USER MUST SEND
+        # `username` and `password` fields 
+        # as FORM DATA (so, no JSON here).
+                ):
+    
+    user_dict = fake_users_db.get(
+            form_data.username
+            # And the SPEC SAYS THAT THE FIELDS HAVE TO BE NAMED LIKE THAT. 
+            # So `user-name` or `email` wouldn't work.
+                # But don't worry, you can show it as you wish to your final users in the frontend.
+                # And your database models can use any other names you want.
+                # But for the login path operation, we need to use these names to be
+                #   compatible with the spec (and be able to, for example, use the 
+                #   integrated API documentation system).
+            )
+    if not user_dict:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    user = UserInDB(**user_dict)
+    
+    ## Check the password
+        ## Password hashing
+    hashed_password = fake_hash_password(form_data.password)
+    if not hashed_password == user.hashed_password:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+
+    ## Return the token
+        # The response of the token endpoint must be a JSON object. It should have a 
+            # `token_type`. 
+                # In our case, as we are using "Bearer" tokens, 
+                # the token type should be "bearer".
+            # `access_token`, 
+                # with a string containing our access token.
+        # For this simple example, we are going to just be 
+        # completely insecure and return the same username as the token.
+    return {"access_token": user.username, "token_type": "bearer"}
+# Tip
+    # By the spec, you should return a `JSON` object 
+    # with an `access_token` and a `token_type`, the same as in this example.
+    # This is something that 
+        # YOU HAVE TO DO YOURSELF IN YOUR CODE, and 
+        # MAKE SURE YOU USE THOSE specific `JSON` KEYS.
+        # It's almost the only thing that you have to remember to do correctly 
+        # yourself, to be compliant with the specifications.
+    # For the rest, FastAPI handles it for you.
+
+@app.get("/users/me")
+async def read_users_me(current_user: User = Depends(get_current_active_user)):
+    return current_user
+    # So, in our endpoint, we will only get a user if 
+        # was correctly authenticated, 
+            # `login`
+                # `hashed_password = fake_hash_password(form_data.password)`
+                # if not hashed_password == user.hashed_password:
+        # the user exists, 
+            # `login` 
+                # `user_dict = fake_users_db.get(form_data.username)` 
+                # `if not user_dict:`
+            # `get_current_user`
+                # `user = fake_decode_token(token)` 
+                # `if not user:`
+        # and is active 
+            # `get_current_active_user`
+                # `if current_user.disabled:`
+
+# Tip
+    # In the next chapter, you will see a real secure implementation, 
+    # with password hashing and JWT tokens.
+    # But for now, let's focus on the specific details we need.
