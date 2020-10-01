@@ -1921,3 +1921,49 @@ async def needy_dependency(
     # All this might not seem as useful with these simple examples.
     # But you will see how useful it is in the chapters about SECURITY.
     # And you will also see the amounts of code it will save you.
+
+"""Dependencies in path operation decorators"""
+# In some cases you don't really need 
+    # the return value of a dependency inside your path operation function.
+    # Or the dependency doesn't return a value.
+
+# But you still need it to be executed/solved.
+# For those cases, 
+    #  instead of declaring a path operation function parameter with `Depends`, 
+    #  you can add a list of dependencies to the path operation decorator.
+
+from fastapi import Depends, FastAPI, Header, HTTPException
+
+app = FastAPI()
+
+
+async def verify_token(
+        # Dependency requirements
+        # request requirements (like headers) or other sub-dependencies
+        x_token: str = Header(...)):
+    if x_token != "fake-super-secret-token":
+        # dependencies can raise exceptions, the same as normal dependencies
+        raise HTTPException(status_code=400, detail="X-Token header invalid")
+
+
+async def verify_key(x_key: str = Header(...)):
+    if x_key != "fake-super-secret-key":
+        raise HTTPException(status_code=400, detail="X-Key header invalid")
+    # They can return values or not, the values won't be used.
+    return x_key
+
+
+@app.get("/items/", 
+         # dependencies will be executed/solved the same way normal dependencies. 
+         # But their value (if they return any) 
+         # won't be passed to your path operation function.
+         dependencies=[Depends(verify_token), Depends(verify_key)])
+async def read_items():
+    return [{"item": "Foo"}, {"item": "Bar"}]
+
+## Dependencies for a group of path operations
+    # Later, when reading about how to structure bigger applications 
+    # ("Bigger Applications - Multiple Files"), 
+    # possibly with multiple files,
+    # you will learn how to declare a single dependencies parameter for a group
+    # of path operations.
