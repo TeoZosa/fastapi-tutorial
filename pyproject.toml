@@ -21,6 +21,10 @@ python-multipart = "^0.0.5"
 async-exit-stack = "^1.0.1"
 async-generator = "^1.10"
 
+# "OAuth2 with Password (and hashing), Bearer with JWT tokens"
+python-jose = {extras = ["cryptography"], version = "^3.2.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.2"}
+
 
 [tool.poetry.dev-dependencies]
 pylint = "^2.6.0"
