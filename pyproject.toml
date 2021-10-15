@@ -31,6 +31,19 @@ sqlalchemy = "^1.3.19"
 # "Static Files"
 aiofiles = "^0.5.0"
 
+# Templates
+jinja2 = "^2.11.2"
+
+# Deployment
+gunicorn = "^20.0.4"
+# uvicorn production deployment reqs
+uvloop = "^0.14.0"
+httptools = "^0.1.1"
+
+# custom response types
+orjson = "^3.4.0"
+websockets = "^8.1"
+
 [tool.poetry.dev-dependencies]
 pylint = "^2.6.0"
 
